@@ -25,7 +25,7 @@ usage() {
   exit 1
 }
 
-# FYI: Another hacky way to get worker count. This assume dataflow using GCE workers.
+# FYI: Another hacky way to get worker count. This assumes dataflow using GCE workers.
 # WORKER_COUNT=$(gcloud compute instances list --filter="labels.dataflow_job_id:${JOB_ID:?}" --format="get(NAME)" | wc -l);
 
 # --- Check for prerequisites ---
