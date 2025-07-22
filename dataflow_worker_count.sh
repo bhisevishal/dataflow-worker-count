@@ -25,7 +25,31 @@ usage() {
   exit 1
 }
 
-# FYI: Another hacky way to get worker count. This assumes dataflow using GCE workers.
+# --- Function to check for missing flag arguments ---
+check_arg() {
+    local flag="$1"
+    local value="$2"
+    if [[ -z "$value" ]]; then
+        echo "Error: Missing argument for $flag" >&2
+        usage
+    fi
+    if [[ "$value" == --* ]]; then
+        echo "Error: Value '${value}' for $flag is not a valid argument value." >&2
+        usage
+    fi
+}
+
+# --- Function to validate non-negative integer arguments ---
+check_non_negative_integer() {
+    local flag="$1"
+    local value="$2"
+    if ! [[ "$value" =~ ^[0-9]+$ ]]; then
+        echo "Error: ${flag} must be a non-negative integer, but got '${value}'." >&2
+        usage
+    fi
+}
+
+# FYI: Another hacky way to get worker count. This assume dataflow using GCE workers.
 # WORKER_COUNT=$(gcloud compute instances list --filter="labels.dataflow_job_id:${JOB_ID:?}" --format="get(NAME)" | wc -l);
 
 # --- Check for prerequisites ---
@@ -50,6 +74,7 @@ while [[ "$#" -gt 0 ]]; do
             PROJECT_ID="${1#*=}"
             ;;
         --project-id)
+            check_arg "$1" "$2"
             PROJECT_ID="$2"
             shift
             ;;
@@ -57,6 +82,7 @@ while [[ "$#" -gt 0 ]]; do
             LOCATION="${1#*=}"
             ;;
         --location)
+            check_arg "$1" "$2"
             LOCATION="$2"
             shift
             ;;
@@ -64,62 +90,46 @@ while [[ "$#" -gt 0 ]]; do
             JOB_ID="${1#*=}"
             ;;
         --job-id)
+            check_arg "$1" "$2"
             JOB_ID="$2"
             shift
             ;;
         --time-delta-minutes=*)
             TIME_DELTA_MINUTES="${1#*=}"
-            if ! [[ "$TIME_DELTA_MINUTES" =~ ^[0-9]+$ ]]; then
-                echo "Error: --time-delta-minutes must be a positive integer."
-                usage
-            fi
+            check_non_negative_integer "--time-delta-minutes" "$TIME_DELTA_MINUTES"
             ;;
         --time-delta-minutes)
-            if [[ "$2" =~ ^[0-9]+$ ]]; then
-                TIME_DELTA_MINUTES="$2"
-            else
-                echo "Error: --time-delta-minutes must be a positive integer."
-                usage
-            fi
+            check_arg "$1" "$2"
+            check_non_negative_integer "$1" "$2"
+            TIME_DELTA_MINUTES="$2"
             shift
             ;;
         --credentials-path=*)
             CREDENTIALS_PATH="${1#*=}"
             ;;
         --credentials-path)
+            check_arg "$1" "$2"
             CREDENTIALS_PATH="$2"
             shift
             ;;
         --min-worker=*)
             MIN_WORKER="${1#*=}"
-            if ! [[ "$MIN_WORKER" =~ ^[0-9]+$ ]]; then
-                echo "Error: --min-worker must be a non-negative integer."
-                usage
-            fi
+            check_non_negative_integer "--min-worker" "$MIN_WORKER"
             ;;
         --min-worker)
-            if [[ "$2" =~ ^[0-9]+$ ]]; then
-                MIN_WORKER="$2"
-            else
-                echo "Error: --min-worker must be a non-negative integer."
-                usage
-            fi
+            check_arg "$1" "$2"
+            check_non_negative_integer "$1" "$2"
+            MIN_WORKER="$2"
             shift
             ;;
         --max-worker=*)
             MAX_WORKER="${1#*=}"
-            if ! [[ "$MAX_WORKER" =~ ^[0-9]+$ ]]; then
-                echo "Error: --max-worker must be a non-negative integer."
-                usage
-            fi
+            check_non_negative_integer "--max-worker" "$MAX_WORKER"
             ;;
         --max-worker)
-            if [[ "$2" =~ ^[0-9]+$ ]]; then
-                MAX_WORKER="$2"
-            else
-                echo "Error: --max-worker must be a non-negative integer."
-                usage
-            fi
+            check_arg "$1" "$2"
+            check_non_negative_integer "$1" "$2"
+            MAX_WORKER="$2"
             shift
             ;;
         --no-fetch-status)
@@ -192,8 +202,13 @@ if [ "$FETCH_JOB_STATUS" = true ]; then
     # --- Check for API errors in the JSON response ---
     ERROR_MESSAGE=$(echo "$JOB_DETAILS_RESPONSE" | jq -r '.error.message // empty')
     if [ -n "$ERROR_MESSAGE" ]; then
-        echo "API Error fetching job details: $ERROR_MESSAGE"
-        echo "Full API Response: $JOB_DETAILS_RESPONSE" | jq . # Pretty print the error response
+        if echo "$JOB_DETAILS_RESPONSE" | jq -e '.error.status == "NOT_FOUND"' >/dev/null 2>&1; then
+            echo "Error: Job with ID '${JOB_ID}' not found in project '${PROJECT_ID}' at location '${LOCATION}'."
+            echo "API Error fetching job details: $ERROR_MESSAGE"
+        else
+            echo "API Error fetching job details: $ERROR_MESSAGE"
+            echo "Full API Response: $JOB_DETAILS_RESPONSE" | jq . # Pretty print the error response
+        fi
         exit 1
     fi
     JOB_STATUS=$(echo "$JOB_DETAILS_RESPONSE" | jq -r '.currentState // "N/A"')
@@ -237,8 +252,12 @@ while true; do
     # --- Check for API errors in the JSON response ---
     ERROR_MESSAGE=$(echo "$RESPONSE" | jq -r '.error.message // empty')
     if [ -n "$ERROR_MESSAGE" ]; then
-        echo "API Error: $ERROR_MESSAGE"
-        echo "Full API Response: $RESPONSE" | jq . # Pretty print the error response
+        if echo "$RESPONSE" | jq -e '.error.status == "NOT_FOUND"' >/dev/null 2>&1; then
+            echo "Error: Job with ID '${JOB_ID}' not found in project '${PROJECT_ID}' at location '${LOCATION}'."
+        else
+            echo "API Error: $ERROR_MESSAGE"
+            echo "Full API Response: $RESPONSE" | jq . # Pretty print the error response
+        fi
         exit 1
     fi
 
