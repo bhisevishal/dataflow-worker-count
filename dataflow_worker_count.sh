@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# FYI: Another hacky way to get worker count. This assume dataflow using GCE workers.
+# WORKER_COUNT=$(gcloud compute instances list --filter="labels.dataflow_job_id:${JOB_ID:?}" --format="get(NAME)" | wc -l);
 
 # --- Function to display usage information ---
 usage() {
@@ -48,9 +50,6 @@ check_non_negative_integer() {
         usage
     fi
 }
-
-# FYI: Another hacky way to get worker count. This assume dataflow using GCE workers.
-# WORKER_COUNT=$(gcloud compute instances list --filter="labels.dataflow_job_id:${JOB_ID:?}" --format="get(NAME)" | wc -l);
 
 # --- Check for prerequisites ---
 command -v curl >/dev/null 2>&1 || { echo >&2 "Error: 'curl' is not installed. Please install it."; exit 1; }
